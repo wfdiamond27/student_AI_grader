@@ -151,6 +151,12 @@ function normalizeLatexBlocks(value) {
     })
     .replace(/(^|\n)(\\begin\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix)\}[\s\S]*?\\end\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix)\})(?=\n|$)/g, (_, prefix, block) => {
       return `${prefix}\\[\n${block}\n\\]`;
+    })
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, body) => {
+      return `\\[${body.replace(/\s*\n\s*/g, " ").trim()}\\]`;
+    })
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, body) => {
+      return `$$${body.replace(/\s*\n\s*/g, " ").trim()}$$`;
     });
 }
 
