@@ -27,6 +27,7 @@ const seedState = {
 let state = loadState();
 const app = document.querySelector("#app");
 const pendingGrades = new Set();
+const pendingSolutions = new Set();
 let openAIConfig = { enabled: false, source: "unknown", model: "gpt-4o-mini" };
 
 function loadState() {
@@ -485,6 +486,12 @@ function renderTeacher() {
       render();
     });
   });
+  document.querySelectorAll("[data-generate-solution]").forEach((button) => {
+    button.addEventListener("click", () => generateProfessorSolution(button.dataset.generateSolution));
+  });
+  document.querySelectorAll("[data-release-solution]").forEach((button) => {
+    button.addEventListener("click", () => toggleSolutionRelease(button.dataset.releaseSolution));
+  });
 }
 
 function updateQuestionPreview() {
@@ -495,10 +502,50 @@ function updateQuestionPreview() {
   typesetMath(preview);
 }
 
+async function generateProfessorSolution(questionId) {
+  const question = state.questions.find((item) => item.id === questionId);
+  if (!question) return;
+
+  pendingSolutions.add(questionId);
+  render();
+
+  try {
+    const response = await fetch("/api/solution", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to generate solution.");
+
+    question.solution = {
+      text: result.solution,
+      released: false,
+      generatedAt: Date.now(),
+    };
+    saveState();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    pendingSolutions.delete(questionId);
+    render();
+  }
+}
+
+function toggleSolutionRelease(questionId) {
+  const question = state.questions.find((item) => item.id === questionId);
+  if (!question?.solution) return;
+  question.solution.released = !question.solution.released;
+  saveState();
+  render();
+}
+
 function renderTeacherQuestion(question) {
   const submissions = state.submissions.filter((item) => item.questionId === question.id);
   const average = Math.round(questionAverage(question.id) * 100);
   const errors = commonErrors(question.id);
+  const solution = question.solution;
+  const solutionPending = pendingSolutions.has(question.id);
   return `
     <article class="question">
       <div class="question-title">
@@ -510,6 +557,31 @@ function renderTeacherQuestion(question) {
           <span class="pill ${question.open ? "open" : "closed"}">${question.open ? "Open" : "Closed"}</span>
           <button class="secondary" data-toggle-question="${question.id}">${question.open ? "Close" : "Reopen"}</button>
         </div>
+      </div>
+      <div class="report-list">
+        <div class="row spread">
+          <strong>Professor solution</strong>
+          <div class="row">
+            ${
+              solution
+                ? `<span class="pill ${solution.released ? "open" : "closed"}">${solution.released ? "Released" : "Professor Only"}</span>`
+                : ""
+            }
+            <button class="secondary" data-generate-solution="${question.id}" ${solutionPending ? "disabled" : ""}>
+              ${solutionPending ? "Generating..." : solution ? "Regenerate" : "Generate"}
+            </button>
+            ${
+              solution
+                ? `<button class="secondary" data-release-solution="${question.id}">${solution.released ? "Hide from Students" : "Send to Students"}</button>`
+                : ""
+            }
+          </div>
+        </div>
+        ${
+          solution
+            ? `<div class="notice">${renderRichText(solution.text)}</div>`
+            : `<span class="small">Generate a draft solution for professor review. Students will not see it until you send it.</span>`
+        }
       </div>
       <div class="report-list">
         <strong>Common missing ideas</strong>
@@ -626,6 +698,11 @@ function renderStudentQuestion(question) {
         <div id="response-preview-${question.id}" class="math-content preview-content">Type an answer to preview math.</div>
       </div>
       ${prior ? `<div class="notice">${escapeHtml(prior.grade.feedback)}</div>` : ""}
+      ${
+        question.solution?.released
+          ? `<div class="notice"><strong>Solution:</strong>${renderRichText(question.solution.text)}</div>`
+          : ""
+      }
       <div class="footer-actions">
         <button type="submit" ${isPending ? "disabled" : ""}>${isPending ? "Grading..." : prior ? "Update Answer" : "Submit Answer"}</button>
       </div>

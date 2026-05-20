@@ -48,6 +48,15 @@ const gradeSchema = {
   },
 };
 
+const solutionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["solution"],
+  properties: {
+    solution: { type: "string" },
+  },
+};
+
 function sendJson(response, status, data) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(data));
@@ -244,6 +253,82 @@ async function handleGrade(request, response) {
   }
 }
 
+async function generateSolution(question) {
+  if (!runtimeOpenAIKey) {
+    throw new Error("Set an OpenAI API key before generating professor solutions.");
+  }
+
+  const apiResponse = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "authorization": `Bearer ${runtimeOpenAIKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      instructions:
+        "Write a professor-facing solution for a classroom short-answer math or STEM question. Be clear, concise, and mathematically careful. Include enough reasoning to help the professor decide what to release to students. If the prompt is ambiguous, state the assumptions or cases. Use LaTeX where helpful. Return only JSON that matches the schema.",
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: JSON.stringify({
+                task: "Generate a solution explanation.",
+                questionPrompt: question.prompt,
+                idealAnswer: question.answerKey,
+                rubric: question.rubric,
+                maxPoints: question.maxPoints,
+              }),
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "professor_solution",
+          strict: true,
+          schema: solutionSchema,
+        },
+      },
+    }),
+  });
+
+  if (!apiResponse.ok) {
+    const errorText = await apiResponse.text();
+    throw new Error(`OpenAI API error ${apiResponse.status}: ${errorText}`);
+  }
+
+  const result = await apiResponse.json();
+  const outputText =
+    result.output_text ||
+    result.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
+  if (!outputText) throw new Error("OpenAI response did not include output text.");
+  return JSON.parse(outputText).solution;
+}
+
+async function handleSolution(request, response) {
+  try {
+    const body = JSON.parse(await readBody(request));
+    if (!body?.question) {
+      sendJson(response, 400, { error: "Expected question." });
+      return;
+    }
+    const question = {
+      prompt: String(body.question.prompt || ""),
+      answerKey: String(body.question.answerKey || ""),
+      rubric: String(body.question.rubric || ""),
+      maxPoints: Number(body.question.maxPoints || 4),
+    };
+    const solution = await generateSolution(question);
+    sendJson(response, 200, { solution });
+  } catch (error) {
+    sendJson(response, 500, { error: error.message });
+  }
+}
+
 function openAIStatus() {
   return {
     enabled: Boolean(runtimeOpenAIKey),
@@ -307,6 +392,10 @@ function serveStatic(request, response) {
 const server = http.createServer((request, response) => {
   if (request.method === "POST" && request.url === "/api/grade") {
     handleGrade(request, response);
+    return;
+  }
+  if (request.method === "POST" && request.url === "/api/solution") {
+    handleSolution(request, response);
     return;
   }
   if ((request.method === "GET" || request.method === "POST") && request.url === "/api/openai-config") {
