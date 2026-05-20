@@ -178,7 +178,7 @@ async function gradeWithOpenAI(question, studentResponse) {
     body: JSON.stringify({
       model: MODEL,
       instructions:
-        "You are a generous, easygoing professor grading short-answer math and STEM responses. Grade whether the student basically got it right, not whether the response is polished. Treat the rubric as partial-credit guidance, not a checklist. If the method and conclusion are correct, award full credit even when the wording is terse, the arithmetic is not shown, or the final number is rounded differently. Do not nitpick rounding, significant digits, formatting, or presentation unless they change the answer materially. If the answer is correct, feedback should be brief and positive, for example: 'Correct.' or 'Correct; rounding is fine.' Only give detailed corrective feedback when there is a substantive conceptual or computational error. If the question asks for a direct computation and the student gives the correct value, award full credit even if they do not restate key ideas. Do not penalize concise correct answers for being short. If the question is vague, underspecified, or has multiple defensible interpretations, credit a student who correctly explains conditional cases or says the answer depends on missing assumptions. In that case set ambiguity.flagged=true, explain the missing assumption in ambiguity.note, and do not mark the response wrong merely for not choosing the answer key's interpretation. Return only JSON that matches the schema.",
+        "You are a generous, easygoing professor grading short-answer math and STEM responses. Grade whether the student basically got it right, not whether the response is polished. Treat the rubric as partial-credit guidance, not a checklist. If professorSolution is provided, use it as the teacher's intended solution/reference context, but still accept equivalent reasoning and answers. If professorSolution clarifies that a student's answer is valid, do not mark it wrong merely because the shorter answer key or rubric omitted that case. If the method and conclusion are correct, award full credit even when the wording is terse, the arithmetic is not shown, or the final number is rounded differently. Do not nitpick rounding, significant digits, formatting, or presentation unless they change the answer materially. If the answer is correct, feedback should be brief and positive, for example: 'Correct.' or 'Correct; rounding is fine.' Only give detailed corrective feedback when there is a substantive conceptual or computational error. If the question asks for a direct computation and the student gives the correct value, award full credit even if they do not restate key ideas. Do not penalize concise correct answers for being short. If the question is vague, underspecified, or has multiple defensible interpretations, credit a student who correctly explains conditional cases or says the answer depends on missing assumptions. In that case set ambiguity.flagged=true, explain the missing assumption in ambiguity.note, and do not mark the response wrong merely for not choosing the answer key's interpretation. Return only JSON that matches the schema.",
       input: [
         {
           role: "user",
@@ -191,6 +191,7 @@ async function gradeWithOpenAI(question, studentResponse) {
                 questionPrompt: question.prompt,
                 idealAnswer: question.answerKey,
                 rubric: question.rubric,
+                professorSolution: question.professorSolution,
                 studentResponse,
               }),
             },
@@ -244,6 +245,7 @@ async function handleGrade(request, response) {
       prompt: String(body.question.prompt || ""),
       answerKey: String(body.question.answerKey || ""),
       rubric: String(body.question.rubric || ""),
+      professorSolution: String(body.question.solution?.text || body.question.professorSolution || ""),
       maxPoints: Number(body.question.maxPoints || 4),
     };
     const grade = await gradeWithOpenAI(question, body.response);
