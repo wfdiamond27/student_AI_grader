@@ -538,6 +538,11 @@ function renderSubmission(submission, question) {
       ${renderRichText(submission.response)}
       <p class="small">${escapeHtml(submission.grade.feedback)}</p>
       ${
+        submission.grade.ambiguity?.flagged
+          ? `<p class="small"><strong>Ambiguity:</strong> ${escapeHtml(submission.grade.ambiguity.note)}</p>`
+          : ""
+      }
+      ${
         submission.grade.misconceptions?.length
           ? `<p class="small"><strong>Misconceptions:</strong> ${escapeHtml(submission.grade.misconceptions.join(", "))}</p>`
           : ""

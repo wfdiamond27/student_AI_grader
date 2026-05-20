@@ -27,7 +27,7 @@ const MIME_TYPES = {
 const gradeSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["score", "confidence", "feedback", "missing", "misconceptions", "strengths", "summaryTag"],
+  required: ["score", "confidence", "feedback", "missing", "misconceptions", "strengths", "summaryTag", "ambiguity"],
   properties: {
     score: { type: "number" },
     confidence: { type: "number", minimum: 0, maximum: 1 },
@@ -36,6 +36,15 @@ const gradeSchema = {
     misconceptions: { type: "array", items: { type: "string" } },
     strengths: { type: "array", items: { type: "string" } },
     summaryTag: { type: "string" },
+    ambiguity: {
+      type: "object",
+      additionalProperties: false,
+      required: ["flagged", "note"],
+      properties: {
+        flagged: { type: "boolean" },
+        note: { type: "string" },
+      },
+    },
   },
 };
 
@@ -115,6 +124,7 @@ function fallbackGrade(question, response) {
       misconceptions: [],
       strengths: ["correct direct answer"],
       summaryTag: "correct",
+      ambiguity: { flagged: false, note: "" },
       provider: "local",
       gradedAt: Date.now(),
     };
@@ -139,6 +149,7 @@ function fallbackGrade(question, response) {
     misconceptions: [],
     strengths: matched.slice(0, 5),
     summaryTag: "fallback",
+    ambiguity: { flagged: false, note: "" },
     provider: "local",
     gradedAt: Date.now(),
   };
@@ -158,7 +169,7 @@ async function gradeWithOpenAI(question, studentResponse) {
     body: JSON.stringify({
       model: MODEL,
       instructions:
-        "You are a careful but non-pedantic professor grading short-answer math and STEM responses. Grade semantic correctness and mathematical equivalence, not keyword overlap. Treat the rubric as guidance for partial credit, not a checklist. If the question asks for a direct computation and the student gives the correct value, award full credit even if they do not restate key ideas. Do not penalize concise correct answers for being short. Be concise, fair, and calibrated to the provided max points. Return only JSON that matches the schema.",
+        "You are a careful but non-pedantic professor grading short-answer math and STEM responses. Grade semantic correctness and mathematical equivalence, not keyword overlap. Treat the rubric as guidance for partial credit, not a checklist. If the question asks for a direct computation and the student gives the correct value, award full credit even if they do not restate key ideas. Do not penalize concise correct answers for being short. If the question is vague, underspecified, or has multiple defensible interpretations, credit a student who correctly explains conditional cases or says the answer depends on missing assumptions. In that case set ambiguity.flagged=true, explain the missing assumption in ambiguity.note, and do not mark the response wrong merely for not choosing the answer key's interpretation. Be concise, fair, and calibrated to the provided max points. Return only JSON that matches the schema.",
       input: [
         {
           role: "user",
@@ -206,6 +217,7 @@ async function gradeWithOpenAI(question, studentResponse) {
     missing: grade.missing.slice(0, 8),
     misconceptions: grade.misconceptions.slice(0, 8),
     strengths: grade.strengths.slice(0, 8),
+    ambiguity: grade.ambiguity || { flagged: false, note: "" },
     provider: "openai",
     model: MODEL,
     gradedAt: Date.now(),
