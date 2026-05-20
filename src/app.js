@@ -142,8 +142,20 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeLatexBlocks(value) {
+  return String(value)
+    .replace(/```(?:latex|tex|math)\s*([\s\S]*?)```/gi, (_, body) => {
+      const content = body.trim();
+      if (/\\\[|\$\$|\\\(/.test(content)) return content;
+      return `\\[\n${content}\n\\]`;
+    })
+    .replace(/(^|\n)(\\begin\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix)\}[\s\S]*?\\end\{(?:aligned|align|equation|cases|matrix|pmatrix|bmatrix)\})(?=\n|$)/g, (_, prefix, block) => {
+      return `${prefix}\\[\n${block}\n\\]`;
+    });
+}
+
 function renderRichText(value) {
-  const paragraphs = escapeHtml(value)
+  const paragraphs = escapeHtml(normalizeLatexBlocks(value))
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.replaceAll("\n", "<br>"))
     .join("</p><p>");

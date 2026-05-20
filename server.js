@@ -271,7 +271,7 @@ async function generateSolution(question, revision = null) {
     body: JSON.stringify({
       model: runtimeModel,
       instructions:
-        "Write a professor-facing solution for a classroom short-answer math or STEM question. Be clear, concise, and mathematically careful. Include enough reasoning to help the professor decide what to release to students. If the prompt is ambiguous, state the assumptions or cases. Use LaTeX where helpful. If revising an existing solution, take the professor feedback as authoritative, fix the specific issue, and return a complete replacement solution. Return only JSON that matches the schema.",
+        "Write a professor-facing solution for a classroom short-answer math or STEM question. Be clear, concise, and mathematically careful. Include enough reasoning to help the professor decide what to release to students. If the prompt is ambiguous, state the assumptions or cases. Use LaTeX where helpful, but always put LaTeX in inline \\(...\\) or display \\[...\\] delimiters. Do not use markdown code fences for LaTeX. If revising an existing solution, take the professor feedback as authoritative, fix the specific issue, and return a complete replacement solution. Return only JSON that matches the schema.",
       input: [
         {
           role: "user",
