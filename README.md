@@ -18,7 +18,7 @@ For LLM grading, set an OpenAI API key before starting the server:
 OPENAI_API_KEY=your_key_here node server.js
 ```
 
-Without `OPENAI_API_KEY`, the app still runs but falls back to the older local keyword-style grader.
+Without `OPENAI_API_KEY`, the app still runs but falls back to a lightweight local grader. It handles direct numeric or exact answers, but OpenAI grading is still the better path for explanations and partial credit.
 
 You can also paste an API key in the Teacher view under **OpenAI Grading**. That key is sent to the local server and kept in server memory only. It is not stored in browser `localStorage`, and it will be cleared when the server restarts unless you started the server with `OPENAI_API_KEY`.
 

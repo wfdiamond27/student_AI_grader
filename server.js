@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const PORT = Number(process.env.PORT || 5174);
+const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 let runtimeOpenAIKey = process.env.OPENAI_API_KEY || "";
@@ -64,11 +65,61 @@ function clampScore(score, maxPoints) {
   return Math.max(0, Math.min(maxPoints, Math.round(numericScore * 10) / 10));
 }
 
+function normalizeText(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9.\-\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractNumbers(value) {
+  return [...String(value).matchAll(/-?\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+}
+
+function nearlyEqual(left, right) {
+  return Math.abs(left - right) <= 1e-9;
+}
+
+function isDirectAnswer(question, response) {
+  const normalizedResponse = normalizeText(response);
+  const normalizedAnswer = normalizeText(question.answerKey);
+  if (!normalizedResponse || !normalizedAnswer) return false;
+  if (normalizedResponse === normalizedAnswer) return true;
+
+  const answerWords = normalizedAnswer.split(" ").filter(Boolean);
+  if (answerWords.length <= 3 && answerWords.every((word) => normalizedResponse.split(" ").includes(word))) {
+    return true;
+  }
+
+  const answerNumbers = extractNumbers(question.answerKey);
+  const responseNumbers = extractNumbers(response);
+  const promptLooksComputational = /\b(what|compute|calculate|evaluate|solve|find)\b/i.test(question.prompt);
+  if (
+    answerNumbers.length === 1 &&
+    responseNumbers.some((number) => nearlyEqual(number, answerNumbers[0])) &&
+    (promptLooksComputational || answerWords.length <= 8)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function fallbackGrade(question, response) {
-  const normalize = (value) =>
-    String(value).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const stopWords = new Set(["about", "after", "also", "because", "being", "from", "have", "into", "that", "their", "there", "this", "which", "with", "would"]);
-  const words = (value) => normalize(value).split(" ").filter((word) => word.length > 3 && !stopWords.has(word));
+  const words = (value) => normalizeText(value).split(" ").filter((word) => word.length > 3 && !stopWords.has(word));
+  if (isDirectAnswer(question, response)) {
+    return {
+      score: clampScore(question.maxPoints, question.maxPoints),
+      confidence: 0.65,
+      feedback:
+        "Full credit from the local fallback grader: the response matches the expected direct answer. Add an OpenAI API key for semantic grading on richer explanations.",
+      missing: [],
+      misconceptions: [],
+      strengths: ["correct direct answer"],
+      summaryTag: "correct",
+      provider: "local",
+      gradedAt: Date.now(),
+    };
+  }
+
   const responseWords = new Set(words(response));
   const expectedTerms = [...new Set([...words(question.answerKey), ...words(question.rubric)])].slice(0, 18);
   const matched = expectedTerms.filter((term) => responseWords.has(term));
@@ -107,7 +158,7 @@ async function gradeWithOpenAI(question, studentResponse) {
     body: JSON.stringify({
       model: MODEL,
       instructions:
-        "You are a careful professor grading short-answer math and STEM responses. Grade semantic understanding, not keyword overlap. Accept equivalent reasoning and notation. Be concise, fair, and calibrated to the provided rubric. Return only JSON that matches the schema.",
+        "You are a careful but non-pedantic professor grading short-answer math and STEM responses. Grade semantic correctness and mathematical equivalence, not keyword overlap. Treat the rubric as guidance for partial credit, not a checklist. If the question asks for a direct computation and the student gives the correct value, award full credit even if they do not restate key ideas. Do not penalize concise correct answers for being short. Be concise, fair, and calibrated to the provided max points. Return only JSON that matches the schema.",
       input: [
         {
           role: "user",
@@ -258,7 +309,7 @@ const server = http.createServer((request, response) => {
   response.end("Method not allowed");
 });
 
-server.listen(PORT, () => {
-  console.log(`ClassCheck AI running at http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`ClassCheck AI running at http://${HOST}:${PORT}`);
   console.log(runtimeOpenAIKey ? `LLM grading enabled with ${MODEL}.` : "Set OPENAI_API_KEY or configure a key in Teacher view to enable LLM grading.");
 });
