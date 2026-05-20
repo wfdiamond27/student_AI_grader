@@ -492,6 +492,9 @@ function renderTeacher() {
   document.querySelectorAll("[data-release-solution]").forEach((button) => {
     button.addEventListener("click", () => toggleSolutionRelease(button.dataset.releaseSolution));
   });
+  document.querySelectorAll("[data-revise-solution]").forEach((button) => {
+    button.addEventListener("click", () => reviseProfessorSolution(button.dataset.reviseSolution));
+  });
 }
 
 function updateQuestionPreview() {
@@ -522,6 +525,46 @@ async function generateProfessorSolution(questionId) {
       text: result.solution,
       released: false,
       generatedAt: Date.now(),
+    };
+    saveState();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    pendingSolutions.delete(questionId);
+    render();
+  }
+}
+
+async function reviseProfessorSolution(questionId) {
+  const question = state.questions.find((item) => item.id === questionId);
+  if (!question?.solution) return;
+  const feedback = byId(`solution-feedback-${questionId}`)?.value.trim();
+  if (!feedback) {
+    alert("Add feedback for the revision first.");
+    return;
+  }
+
+  pendingSolutions.add(questionId);
+  render();
+
+  try {
+    const response = await fetch("/api/solution", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        question,
+        currentSolution: question.solution.text,
+        feedback,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to revise solution.");
+
+    question.solution = {
+      ...question.solution,
+      text: result.solution,
+      revisedAt: Date.now(),
+      lastFeedback: feedback,
     };
     saveState();
   } catch (error) {
@@ -579,7 +622,15 @@ function renderTeacherQuestion(question) {
         </div>
         ${
           solution
-            ? `<div class="notice">${renderRichText(solution.text)}</div>`
+            ? `<div class="grid">
+                <div class="notice">${renderRichText(solution.text)}</div>
+                <label>Revision feedback<textarea id="solution-feedback-${question.id}" placeholder="Tell the AI what is wrong or what assumption to use.">${escapeHtml(solution.lastFeedback || "")}</textarea></label>
+                <div class="footer-actions">
+                  <button class="secondary" data-revise-solution="${question.id}" ${solutionPending ? "disabled" : ""}>
+                    ${solutionPending ? "Revising..." : "Revise with Feedback"}
+                  </button>
+                </div>
+              </div>`
             : `<span class="small">Generate a draft solution for professor review. Students will not see it until you send it.</span>`
         }
       </div>

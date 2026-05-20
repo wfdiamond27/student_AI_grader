@@ -255,11 +255,12 @@ async function handleGrade(request, response) {
   }
 }
 
-async function generateSolution(question) {
+async function generateSolution(question, revision = null) {
   if (!runtimeOpenAIKey) {
     throw new Error("Set an OpenAI API key before generating professor solutions.");
   }
 
+  const isRevision = Boolean(revision?.currentSolution && revision?.feedback);
   const apiResponse = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -269,7 +270,7 @@ async function generateSolution(question) {
     body: JSON.stringify({
       model: MODEL,
       instructions:
-        "Write a professor-facing solution for a classroom short-answer math or STEM question. Be clear, concise, and mathematically careful. Include enough reasoning to help the professor decide what to release to students. If the prompt is ambiguous, state the assumptions or cases. Use LaTeX where helpful. Return only JSON that matches the schema.",
+        "Write a professor-facing solution for a classroom short-answer math or STEM question. Be clear, concise, and mathematically careful. Include enough reasoning to help the professor decide what to release to students. If the prompt is ambiguous, state the assumptions or cases. Use LaTeX where helpful. If revising an existing solution, take the professor feedback as authoritative, fix the specific issue, and return a complete replacement solution. Return only JSON that matches the schema.",
       input: [
         {
           role: "user",
@@ -278,10 +279,13 @@ async function generateSolution(question) {
               type: "input_text",
               text: JSON.stringify({
                 task: "Generate a solution explanation.",
+                mode: isRevision ? "revise_existing_solution" : "generate_new_solution",
                 questionPrompt: question.prompt,
                 idealAnswer: question.answerKey,
                 rubric: question.rubric,
                 maxPoints: question.maxPoints,
+                currentSolution: revision?.currentSolution || "",
+                professorFeedback: revision?.feedback || "",
               }),
             },
           ],
@@ -324,7 +328,11 @@ async function handleSolution(request, response) {
       rubric: String(body.question.rubric || ""),
       maxPoints: Number(body.question.maxPoints || 4),
     };
-    const solution = await generateSolution(question);
+    const revision = {
+      currentSolution: String(body.currentSolution || body.question.solution?.text || ""),
+      feedback: String(body.feedback || "").trim(),
+    };
+    const solution = await generateSolution(question, revision.feedback ? revision : null);
     sendJson(response, 200, { solution });
   } catch (error) {
     sendJson(response, 500, { error: error.message });
