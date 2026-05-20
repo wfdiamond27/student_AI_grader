@@ -5,8 +5,9 @@ const path = require("node:path");
 const PORT = Number(process.env.PORT || 5174);
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 let runtimeOpenAIKey = process.env.OPENAI_API_KEY || "";
+let runtimeModel = DEFAULT_MODEL;
 
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
@@ -176,7 +177,7 @@ async function gradeWithOpenAI(question, studentResponse) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: runtimeModel,
       instructions:
         "You are a generous, easygoing professor grading short-answer math and STEM responses. Grade whether the student basically got it right, not whether the response is polished. Treat the rubric as partial-credit guidance, not a checklist. If professorSolution is provided, use it as the teacher's intended solution/reference context, but still accept equivalent reasoning and answers. If professorSolution clarifies that a student's answer is valid, do not mark it wrong merely because the shorter answer key or rubric omitted that case. If the method and conclusion are correct, award full credit even when the wording is terse, the arithmetic is not shown, or the final number is rounded differently. Do not nitpick rounding, significant digits, formatting, or presentation unless they change the answer materially. If the answer is correct, feedback should be brief and positive, for example: 'Correct.' or 'Correct; rounding is fine.' Only give detailed corrective feedback when there is a substantive conceptual or computational error. If the question asks for a direct computation and the student gives the correct value, award full credit even if they do not restate key ideas. Do not penalize concise correct answers for being short. If the question is vague, underspecified, or has multiple defensible interpretations, credit a student who correctly explains conditional cases or says the answer depends on missing assumptions. In that case set ambiguity.flagged=true, explain the missing assumption in ambiguity.note, and do not mark the response wrong merely for not choosing the answer key's interpretation. Return only JSON that matches the schema.",
       input: [
@@ -229,7 +230,7 @@ async function gradeWithOpenAI(question, studentResponse) {
     strengths: grade.strengths.slice(0, 8),
     ambiguity: grade.ambiguity || { flagged: false, note: "" },
     provider: "openai",
-    model: MODEL,
+    model: runtimeModel,
     gradedAt: Date.now(),
   };
 }
@@ -268,7 +269,7 @@ async function generateSolution(question, revision = null) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: runtimeModel,
       instructions:
         "Write a professor-facing solution for a classroom short-answer math or STEM question. Be clear, concise, and mathematically careful. Include enough reasoning to help the professor decide what to release to students. If the prompt is ambiguous, state the assumptions or cases. Use LaTeX where helpful. If revising an existing solution, take the professor feedback as authoritative, fix the specific issue, and return a complete replacement solution. Return only JSON that matches the schema.",
       input: [
@@ -347,7 +348,7 @@ function openAIStatus() {
         ? "environment"
         : "teacher"
       : "none",
-    model: MODEL,
+    model: runtimeModel,
   };
 }
 
@@ -361,8 +362,16 @@ async function handleOpenAIConfig(request, response) {
     const rawBody = await readBody(request);
     const body = rawBody ? JSON.parse(rawBody) : {};
     const apiKey = String(body.apiKey || "").trim();
+    const model = String(body.model || "").trim();
     if (body.clear) {
       runtimeOpenAIKey = process.env.OPENAI_API_KEY || "";
+      sendJson(response, 200, openAIStatus());
+      return;
+    }
+    if (model) {
+      runtimeModel = model;
+    }
+    if (!apiKey && model) {
       sendJson(response, 200, openAIStatus());
       return;
     }
@@ -422,5 +431,5 @@ const server = http.createServer((request, response) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`ClassCheck AI running at http://${HOST}:${PORT}`);
-  console.log(runtimeOpenAIKey ? `LLM grading enabled with ${MODEL}.` : "Set OPENAI_API_KEY or configure a key in Teacher view to enable LLM grading.");
+  console.log(runtimeOpenAIKey ? `LLM grading enabled with ${runtimeModel}.` : "Set OPENAI_API_KEY or configure a key in Teacher view to enable LLM grading.");
 });

@@ -22,6 +22,8 @@ Without `OPENAI_API_KEY`, the app still runs but falls back to a lightweight loc
 
 You can also paste an API key in the Teacher view under **OpenAI Grading**. That key is sent to the local server and kept in server memory only. It is not stored in browser `localStorage`, and it will be cleared when the server restarts unless you started the server with `OPENAI_API_KEY`.
 
+The Teacher view also lets you choose the OpenAI model used for grading and solution generation. The server starts with `OPENAI_MODEL` if set, otherwise it defaults to `gpt-4o-mini`.
+
 ## What works now
 
 - Teacher sets a class login code.

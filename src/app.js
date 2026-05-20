@@ -71,20 +71,21 @@ async function refreshOpenAIConfig() {
 async function saveOpenAIKey(event) {
   event.preventDefault();
   const apiKey = byId("openAIKey").value.trim();
+  const model = selectedOpenAIModel();
   const status = byId("openAIStatusMessage");
   const submitButton = event.submitter;
-  if (!apiKey) {
-    status.textContent = "Paste an API key first.";
+  if (!apiKey && !model) {
+    status.textContent = "Paste an API key or choose a model first.";
     return;
   }
 
-  status.textContent = "Checking key...";
+  status.textContent = "Saving OpenAI settings...";
   if (submitButton) submitButton.disabled = true;
   try {
     const response = await fetch("/api/openai-config", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ apiKey }),
+      body: JSON.stringify({ apiKey, model }),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -99,6 +100,18 @@ async function saveOpenAIKey(event) {
   } finally {
     if (submitButton) submitButton.disabled = false;
   }
+}
+
+function selectedOpenAIModel() {
+  const selected = byId("openAIModel")?.value || "";
+  if (selected === "custom") return byId("customOpenAIModel")?.value.trim() || "";
+  return selected;
+}
+
+function syncCustomModelVisibility() {
+  const custom = byId("customOpenAIModel");
+  if (!custom) return;
+  custom.hidden = byId("openAIModel")?.value !== "custom";
 }
 
 async function clearOpenAIKey() {
@@ -432,10 +445,19 @@ function renderTeacher() {
             : "Paste an OpenAI API key to enable semantic grading for new submissions."}
         </p>
         <label>API key<input id="openAIKey" type="password" autocomplete="off" placeholder="sk-..." /></label>
-        <p class="small" id="openAIStatusMessage">The key is kept in server memory and is not saved in localStorage.</p>
+        <label>Model
+          <select id="openAIModel">
+            <option value="gpt-4o-mini" ${openAIConfig.model === "gpt-4o-mini" ? "selected" : ""}>gpt-4o-mini - fast/cheap</option>
+            <option value="gpt-5-mini" ${openAIConfig.model === "gpt-5-mini" ? "selected" : ""}>gpt-5-mini - stronger reasoning</option>
+            <option value="gpt-5.5" ${openAIConfig.model === "gpt-5.5" ? "selected" : ""}>gpt-5.5 - strongest available</option>
+            <option value="custom" ${["gpt-4o-mini", "gpt-5-mini", "gpt-5.5"].includes(openAIConfig.model) ? "" : "selected"}>Custom model</option>
+          </select>
+        </label>
+        <input id="customOpenAIModel" value="${["gpt-4o-mini", "gpt-5-mini", "gpt-5.5"].includes(openAIConfig.model) ? "" : escapeHtml(openAIConfig.model || "")}" placeholder="e.g. gpt-5.5" />
+        <p class="small" id="openAIStatusMessage">The key and model are kept in server memory and are not saved in localStorage.</p>
         <div class="footer-actions">
           <button type="button" class="secondary" id="clearOpenAIKey">Clear</button>
-          <button type="submit">Use Key</button>
+          <button type="submit">Save Settings</button>
         </div>
       </form>
 
@@ -476,6 +498,8 @@ function renderTeacher() {
   byId("questionForm").addEventListener("submit", addQuestion);
   byId("openAIForm").addEventListener("submit", saveOpenAIKey);
   byId("clearOpenAIKey").addEventListener("click", clearOpenAIKey);
+  byId("openAIModel").addEventListener("change", syncCustomModelVisibility);
+  syncCustomModelVisibility();
   byId("prompt").addEventListener("input", () => updateQuestionPreview());
   updateQuestionPreview();
   document.querySelectorAll("[data-toggle-question]").forEach((button) => {
